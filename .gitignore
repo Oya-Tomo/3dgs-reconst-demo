@@ -17,6 +17,8 @@ exports/
 viewer_output/
 
 # Tool caches
+.direnv/
+.envrc.local
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/

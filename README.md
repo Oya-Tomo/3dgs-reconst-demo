@@ -36,6 +36,9 @@ The workflow is:
 │   ├── export.py         # Portable official-Viewer bundle creation
 │   └── viewer.py         # Official Nerfstudio Viewer launcher
 ├── tests/
+├── .envrc                 # Shared direnv entry point
+├── flake.nix              # Nix development environment
+├── flake.lock             # Pinned nixpkgs revision
 ├── pyproject.toml
 └── uv.lock
 ```
@@ -68,20 +71,52 @@ browser-only PLY renderer.
 
 ## 1. Set Up the Project
 
-Clone the repository and install the required system libraries:
+Clone the repository:
 
 ```bash
 git clone https://github.com/Oya-Tomo/3dgs-reconst-demo.git
 cd 3dgs-reconst-demo
+```
+
+Choose either the Ubuntu system-package setup or the tracked Nix environment.
+
+### Ubuntu System Packages
+
+Install the required system libraries:
+
+```bash
 sudo apt update
 sudo apt install --yes build-essential ffmpeg git libgl1 libglib2.0-0
 ```
 
-Synchronize the Python environment from the lockfile:
+Then synchronize the Python environment from the lockfile:
 
 ```bash
 uv sync --all-groups
 ```
+
+### Nix and direnv
+
+Use this option when Python and uv are managed by Nix. The tracked `.envrc` loads the pinned default dev shell from
+`flake.nix`, including Python 3.12, uv, FFmpeg, native build tools, and the runtime libraries required by the prebuilt
+Spectacular AI and OpenCV wheels.
+
+Authorize the repository environment once, then synchronize Python packages normally:
+
+```bash
+direnv allow
+uv sync --all-groups
+```
+
+Without direnv, enter the same environment explicitly:
+
+```bash
+nix develop
+uv sync --all-groups
+```
+
+The shared `.envrc` is versioned. Put optional machine-specific environment variables in `.envrc.local`, which is
+excluded from Git. The Nix shell supplies userspace libraries only; the NVIDIA driver remains managed by the host.
 
 The lockfile resolves recent compatible versions of Nerfstudio, CUDA 13.2 PyTorch, torchvision, gsplat, Spectacular AI,
 and the development tools.
@@ -266,6 +301,8 @@ uv run pytest
 - `No trained config.yml exists`: finish a training run or set `EXPORT.checkpoint_config` explicitly.
 - `The Viewer output directory is not empty`: move the previous bundle or change `EXPORT.output_dir`.
 - `The Viewer input directory does not exist`: make the `scp` destination match `VIEWER.input_dir`.
+- `libz.so.1`, `libGL.so.1`, or `libgthread-2.0.so.0` is missing with Nix Python: allow the tracked `.envrc` or enter
+  `nix develop` before running uv.
 - Missing point-cloud warning: training can continue with random initialization, but a suitable point cloud usually gives
   a better starting state.
 - Viewer launch or rendering failure: confirm that the local NVIDIA driver supports the locked CUDA runtime and that
