@@ -123,7 +123,10 @@ uv run src/prepare_data.py
 ```
 
 The script builds the `sai-cli process` operation from `SpectacularAISettings`, writes the result to
-`DATASET.dataset_path`, and validates the generated dataset. It refuses to overwrite a non-empty destination.
+`DATASET.dataset_path`, and validates the generated dataset. It refuses to overwrite a non-empty destination. During
+conversion, an indeterminate progress display reports the elapsed time, current processing stage, and live CPU usage.
+Spectacular AI does not expose a reliable total-work value, so the display intentionally does not present a fabricated
+percentage or completion estimate.
 
 ### Other Data Sources
 

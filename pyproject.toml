@@ -9,6 +9,7 @@ dependencies = [
     # Nerfstudio main currently relies on the Pillow encoder API used before 12.0.
     "pillow>=11.3,<12",
     "pyyaml>=6.0.2,<7",
+    "rich>=14.3.4,<15",
     "spectacularai[full]>=1.52.1,<2",
     "torch>=2.12.1,<2.13",
     "torchvision>=0.27.1,<0.28",
