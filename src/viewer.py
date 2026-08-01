@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -16,6 +19,8 @@ from nerfstudio.scripts.viewer.run_viewer import RunViewer, ViewerConfigWithoutN
 
 from dataset import validate_dataset
 from settings import VIEWER, VIEWER_BUNDLE_VERSION, ViewerSettings
+
+_TORCH_TRUSTED_LOAD_ENV = "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,8 +165,32 @@ def write_runtime_config(bundle: ViewerBundle, settings: ViewerSettings = VIEWER
     if runtime_filename.is_absolute() or runtime_filename.name != settings.runtime_config_filename:
         raise ValueError("VIEWER.runtime_config_filename must be a filename, not a path.")
     runtime_config_path = bundle.directory / runtime_filename
-    runtime_config_path.write_text(yaml.dump(build_runtime_config(bundle)), encoding="utf-8")
+    runtime_config = build_runtime_config(bundle)
+    # Standalone RunViewer expects the training run hierarchy to exist before it
+    # creates viewer_log_filename.txt without parents=True.
+    runtime_config.get_base_dir().mkdir(parents=True, exist_ok=True)
+    runtime_config_path.write_text(yaml.dump(runtime_config), encoding="utf-8")
     return runtime_config_path
+
+
+@contextmanager
+def trusted_checkpoint_loading() -> Iterator[None]:
+    """Temporarily allow Nerfstudio to restore a trusted full-state checkpoint.
+
+    PyTorch 2.6 and newer default ``torch.load`` to ``weights_only=True``.
+    Nerfstudio checkpoints also contain NumPy optimizer state, and its Viewer
+    call site does not currently pass ``weights_only=False`` explicitly.
+    """
+
+    previous_value = os.environ.get(_TORCH_TRUSTED_LOAD_ENV)
+    os.environ[_TORCH_TRUSTED_LOAD_ENV] = "1"
+    try:
+        yield
+    finally:
+        if previous_value is None:
+            os.environ.pop(_TORCH_TRUSTED_LOAD_ENV, None)
+        else:
+            os.environ[_TORCH_TRUSTED_LOAD_ENV] = previous_value
 
 
 def build_viewer_runner(
@@ -191,8 +220,10 @@ def main() -> None:
     print(f"Checkpoint: {bundle.checkpoint_path.name}")
     print(f"Camera records: {bundle.camera_count:,}")
     print("Launching Nerfstudio's official Viewer with the checkpoint's full spherical harmonics.")
+    print("Loading the trusted Viewer bundle with full checkpoint deserialization enabled.")
     try:
-        build_viewer_runner(runtime_config_path).main()
+        with trusted_checkpoint_loading():
+            build_viewer_runner(runtime_config_path).main()
     except KeyboardInterrupt:
         print("Viewer stopped.")
 

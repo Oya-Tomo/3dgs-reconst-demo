@@ -35,9 +35,29 @@
         UV_PYTHON_DOWNLOADS = "never";
 
         # Prebuilt Spectacular AI and OpenCV wheels rely on these dynamic
-        # libraries without carrying Nix-aware runtime search paths.
+        # libraries without carrying Nix-aware runtime search paths. Nix's
+        # loader also does not search the host's FHS NVIDIA driver paths. Link
+        # only libcuda into an isolated directory: adding the complete host
+        # library directory would mix the host and Nix glibc implementations.
         shellHook = ''
-          export LD_LIBRARY_PATH="${runtimeLibraryPath}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          projectDriverLinkDir="$PWD/.direnv/host-driver-libs"
+          mkdir -p "$projectDriverLinkDir"
+
+          for projectDriverCandidate in \
+            /run/opengl-driver/lib/libcuda.so.1 \
+            /usr/lib/x86_64-linux-gnu/libcuda.so.1 \
+            /usr/lib64/libcuda.so.1 \
+            /usr/lib/wsl/lib/libcuda.so.1
+          do
+            if [ -e "$projectDriverCandidate" ]; then
+              projectDriverLibrary="$(readlink -f "$projectDriverCandidate")"
+              ln -sfn "$projectDriverLibrary" "$projectDriverLinkDir/libcuda.so.1"
+              ln -sfn "$projectDriverLibrary" "$projectDriverLinkDir/libcuda.so"
+              break
+            fi
+          done
+
+          export LD_LIBRARY_PATH="${runtimeLibraryPath}:$projectDriverLinkDir''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
         '';
       };
     };

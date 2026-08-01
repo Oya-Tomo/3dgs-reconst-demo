@@ -116,7 +116,8 @@ uv sync --all-groups
 ```
 
 The shared `.envrc` is versioned. Put optional machine-specific environment variables in `.envrc.local`, which is
-excluded from Git. The Nix shell supplies userspace libraries only; the NVIDIA driver remains managed by the host.
+excluded from Git. The Nix shell supplies userspace libraries and exposes the host's `libcuda` without bundling a driver;
+the NVIDIA driver itself remains managed by the host.
 
 The lockfile resolves recent compatible versions of Nerfstudio, CUDA 13.2 PyTorch, torchvision, gsplat, Spectacular AI,
 and the development tools.
@@ -246,6 +247,9 @@ uv run src/viewer.py
 
 `src/viewer.py` validates the copied directory, generates a relocatable runtime config inside it, and calls the same
 official `RunViewer` implementation that powers `ns-viewer`. The URL is printed by Nerfstudio, normally using port 7007.
+The bundle contains a pickle-based Nerfstudio checkpoint, so only open bundles you created or otherwise trust. While the
+official Viewer restores that checkpoint, the launcher temporarily enables PyTorch's full-state compatibility mode and
+restores the previous process environment when the Viewer exits.
 
 The official Viewer restores the full Splatfacto checkpoint, so degree-3 spherical harmonics produce view-dependent
 color. Training camera frustums are available in the Viewer's scene tree. Each frustum's orientation represents that

@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,13 @@ from PIL import Image
 
 from settings import VIEWER_BUNDLE_VERSION, ViewerSettings
 from train import build_trainer_config
-from viewer import build_runtime_config, build_viewer_runner, load_viewer_bundle, write_runtime_config
+from viewer import (
+    build_runtime_config,
+    build_viewer_runner,
+    load_viewer_bundle,
+    trusted_checkpoint_loading,
+    write_runtime_config,
+)
 
 
 def _transform(x: float) -> list[list[float]]:
@@ -128,3 +135,14 @@ def test_runtime_config_and_runner_use_official_nerfstudio_viewer(tmp_path: Path
     assert runner.viewer.websocket_port == 7008
     assert runner.viewer.max_num_display_images == 2
     assert reloaded.get_checkpoint_dir() == bundle.checkpoint_dir
+    assert reloaded.get_base_dir().is_dir()
+
+
+def test_trusted_checkpoint_loading_is_scoped(monkeypatch: pytest.MonkeyPatch) -> None:
+    variable = "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"
+    monkeypatch.delenv(variable, raising=False)
+
+    with trusted_checkpoint_loading():
+        assert os.environ[variable] == "1"
+
+    assert variable not in os.environ
