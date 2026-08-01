@@ -7,10 +7,10 @@ import subprocess
 from pathlib import Path
 
 from dataset import validate_dataset
-from settings import MAPPING, MappingSettings
+from settings import DATASET, SPECTACULAR_AI, SpectacularAISettings
 
 
-def build_process_command(settings: MappingSettings) -> list[str]:
+def build_process_command(settings: SpectacularAISettings, dataset_path: Path) -> list[str]:
     """Build the supported Spectacular AI Mapping Tools invocation."""
 
     command = [
@@ -23,7 +23,7 @@ def build_process_command(settings: MappingSettings) -> list[str]:
         command.append("--preview3d")
     if settings.fast:
         command.append("--fast")
-    command.append(str(settings.dataset_path))
+    command.append(str(dataset_path))
     return command
 
 
@@ -31,13 +31,14 @@ def _ensure_empty_destination(path: Path) -> None:
     if path.exists() and (not path.is_dir() or any(path.iterdir())):
         raise FileExistsError(
             f"The conversion destination is not empty: {path}\n"
-            "The operation was aborted to protect existing data. Configure a different dataset_path in settings.py."
+            "The operation was aborted to protect existing data. Configure a different DATASET.dataset_path in "
+            "settings.py."
         )
 
 
 def main() -> None:
-    recording_path = MAPPING.recording_path.expanduser().resolve()
-    dataset_path = MAPPING.dataset_path.expanduser().resolve()
+    recording_path = SPECTACULAR_AI.recording_path.expanduser().resolve()
+    dataset_path = DATASET.dataset_path.expanduser().resolve()
 
     if not recording_path.exists():
         raise FileNotFoundError(f"The Spectacular AI recording does not exist: {recording_path}")
@@ -49,13 +50,13 @@ def main() -> None:
     _ensure_empty_destination(dataset_path)
     dataset_path.parent.mkdir(parents=True, exist_ok=True)
     command = build_process_command(
-        MappingSettings(
+        SpectacularAISettings(
             recording_path=recording_path,
-            dataset_path=dataset_path,
-            key_frame_distance=MAPPING.key_frame_distance,
-            preview_3d=MAPPING.preview_3d,
-            fast=MAPPING.fast,
-        )
+            key_frame_distance=SPECTACULAR_AI.key_frame_distance,
+            preview_3d=SPECTACULAR_AI.preview_3d,
+            fast=SPECTACULAR_AI.fast,
+        ),
+        dataset_path,
     )
     print("Converting the Spectacular AI recording:", " ".join(command))
     subprocess.run(command, check=True)

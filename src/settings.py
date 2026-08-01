@@ -8,15 +8,14 @@ from pathlib import Path
 from typing import Literal
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-VIEWER_BUNDLE_VERSION = 1
+VIEWER_BUNDLE_VERSION = 2
 
 
 @dataclass(frozen=True, slots=True)
-class MappingSettings:
-    """Spectacular AI recording conversion settings."""
+class SpectacularAISettings:
+    """Settings for the included Spectacular AI input adapter."""
 
     recording_path: Path = PROJECT_ROOT / "data" / "recording"
-    dataset_path: Path = PROJECT_ROOT / "data" / "nerfstudio"
     key_frame_distance: float = 0.05
     preview_3d: bool = False
     fast: bool = False
@@ -45,7 +44,7 @@ class TrainingSettings:
     """Splatfacto trainer, model, optimizer, and viewer settings."""
 
     output_dir: Path = PROJECT_ROOT / "outputs"
-    experiment_name: str = "spectacular-ai-3dgs"
+    experiment_name: str = "3dgs-reconstruction"
     project_name: str = "3dgs-reconst-demo"
     seed: int = 42
     num_devices: int = 1
@@ -124,43 +123,43 @@ class TrainingSettings:
 
 @dataclass(frozen=True, slots=True)
 class ExportSettings:
-    """Settings for exporting a directory that can be copied to the viewer machine."""
+    """Settings for creating a portable official Nerfstudio Viewer bundle."""
 
     checkpoint_config: Path | None = None
     training_output_dir: Path = PROJECT_ROOT / "outputs"
-    experiment_name: str = "spectacular-ai-3dgs"
+    experiment_name: str = "3dgs-reconstruction"
     method_name: str = "splatfacto"
+    dataset_path: Path = PROJECT_ROOT / "data" / "nerfstudio"
     output_dir: Path = PROJECT_ROOT / "viewer_output"
     manifest_filename: str = "manifest.json"
-    splat_filename: str = "splat.ply"
-    ply_color_mode: Literal["sh_coeffs", "rgb"] = "sh_coeffs"
-    include_camera_poses: bool = True
+    config_filename: str = "config.yml"
+    checkpoint_dirname: str = "nerfstudio_models"
+    dataset_dirname: str = "dataset"
 
 
 @dataclass(frozen=True, slots=True)
 class ViewerSettings:
-    """Settings for loading a copied viewer-output directory locally."""
+    """Settings for launching Nerfstudio's official Viewer from a copied bundle."""
 
     input_dir: Path = PROJECT_ROOT / "viewer_output"
     manifest_filename: str = "manifest.json"
     host: str = "127.0.0.1"
     port: int = 7_007
-    up_direction: Literal["+x", "+y", "+z", "-x", "-y", "-z"] = "+z"
-    show_cameras: bool = True
-    show_view_directions: bool = False
-    max_cameras: int = 256
+    max_display_cameras: int = 256
     camera_frustum_scale: float = 0.08
-    camera_fov_degrees: float = 50.0
-    camera_aspect: float = 16 / 9
-    view_direction_length: float = 0.3
+    image_format: Literal["jpeg", "png"] = "jpeg"
+    jpeg_quality: int = 85
+    default_composite_depth: bool = False
+    runtime_config_filename: str = ".ns-viewer-config.yml"
 
 
-MAPPING = MappingSettings()
-DATASET = DatasetSettings(dataset_path=MAPPING.dataset_path)
+SPECTACULAR_AI = SpectacularAISettings()
+DATASET = DatasetSettings()
 TRAINING = TrainingSettings()
 EXPORT = ExportSettings(
     training_output_dir=TRAINING.output_dir,
     experiment_name=TRAINING.experiment_name,
+    dataset_path=DATASET.dataset_path,
 )
 VIEWER = ViewerSettings(
     input_dir=EXPORT.output_dir,

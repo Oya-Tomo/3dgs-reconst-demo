@@ -1,255 +1,223 @@
-# Spectacular AI + Nerfstudio 3DGS Demo
+# Nerfstudio 3DGS Reconstruction Demo
 
-This project converts a recording captured with Spectacular AI Mapping Tools and trains Nerfstudio's
-3D Gaussian Splatting implementation, `Splatfacto`.
+This project trains and views Nerfstudio's 3D Gaussian Splatting implementation, Splatfacto, with every project
+parameter managed in Python code.
 
-It does not use Nerfstudio's `ns-train`, `ns-viewer`, or `ns-export` commands. Dataset paths, model parameters,
-optimizers, training iterations, export paths, and Viewer settings are all managed in
-[src/settings.py](src/settings.py). Project scripts are run directly in the form `uv run src/<script>.py`.
+Training is started with a script instead of the `ns-train` CLI. [src/train.py](src/train.py) builds a complete
+`TrainerConfig` and passes it to `nerfstudio.scripts.train.main`, the same training entry point used by `ns-train` after
+CLI parsing. The default model uses degree-3 spherical harmonics, so it learns and renders view-dependent color.
 
-The intended workflow is:
+The core training and viewing flow accepts any valid Nerfstudio-format dataset. The repository currently includes a
+Spectacular AI Mapping Tools input adapter in [src/prepare_data.py](src/prepare_data.py); additional capture and
+conversion tools can be added without changing the trainer, exporter, or Viewer.
 
-1. Convert a Spectacular AI recording on the training machine.
-2. Train Splatfacto on the training machine.
-3. Export a portable Viewer bundle to a configured directory.
-4. Copy only that directory to the local machine with `scp`.
-5. Run `viewer.py` locally to display the Gaussians, capture cameras, and view directions.
+The workflow is:
 
-The source images and Nerfstudio dataset do not need to be copied to the local machine.
+1. Prepare a Nerfstudio-format dataset on the training machine.
+2. Train Splatfacto by running `src/train.py`.
+3. Package the checkpoint and camera metadata into `viewer_output/`.
+4. Copy only `viewer_output/` to the local machine with `scp`.
+5. Run `src/viewer.py` locally to launch Nerfstudio's official Viewer.
 
 ## Project Layout
 
 ```text
 .
 ├── data/
-│   ├── recording/        # Original Spectacular AI recording (not tracked by Git)
-│   └── nerfstudio/       # Converted dataset (not tracked by Git)
-├── outputs/              # Nerfstudio checkpoints (not tracked by Git)
-├── viewer_output/        # Portable directory copied with scp (not tracked by Git)
+│   ├── recording/        # Optional input recording for an adapter
+│   └── nerfstudio/       # Training dataset
+├── outputs/              # Nerfstudio training runs and checkpoints
+├── viewer_output/        # Portable bundle copied with scp
 ├── src/
-│   ├── settings.py       # All paths and parameters
-│   ├── prepare_data.py   # Convert a Spectacular AI recording
-│   ├── dataset.py        # Validate transforms.json and referenced files
-│   ├── train.py          # Train Splatfacto through the Python API
-│   ├── export.py         # Create the portable Viewer bundle
-│   └── viewer.py         # Load and display the copied bundle locally
+│   ├── settings.py       # All project paths and parameters
+│   ├── prepare_data.py   # Current Spectacular AI input adapter
+│   ├── dataset.py        # Nerfstudio dataset validation
+│   ├── train.py          # Programmatic Splatfacto training
+│   ├── export.py         # Portable official-Viewer bundle creation
+│   └── viewer.py         # Official Nerfstudio Viewer launcher
 ├── tests/
 ├── pyproject.toml
 └── uv.lock
 ```
+
+Large recordings, datasets, checkpoints, and Viewer bundles are excluded from Git.
 
 ## Requirements
 
 ### Training Machine
 
 - Ubuntu x86-64
-- An NVIDIA GPU that supports CUDA 13.2
-- NVIDIA driver and CUDA Toolkit 13.2
-- FFmpeg
-- [uv](https://docs.astral.sh/uv/)
+- An NVIDIA CUDA-capable GPU
+- An NVIDIA driver and CUDA Toolkit 13.2
+- FFmpeg when using the included Spectacular AI adapter
+- uv
 
-The project is not restricted to a particular GPU model. The default settings favor quality, so adjust image caching
-and downscaling to match the available VRAM and dataset size.
+The project is not restricted to a particular GPU model. Image resolution, caching, and training settings determine
+the required VRAM.
 
 ### Local Viewer Machine
 
 - Linux x86-64
-- A browser with WebGL support
+- An NVIDIA CUDA-capable GPU and compatible driver
+- CUDA Toolkit 13.2
+- A local web browser
 - uv
 
-The local Viewer reads a PLY file and uses Viser's browser-side Gaussian renderer. The Viewer itself does not use CUDA.
+Nerfstudio's official Viewer renders through the restored Splatfacto model on the local machine. It is not a standalone
+browser-only PLY renderer.
 
-## 1. Setup
+## 1. Set Up the Project
 
-### 1.1 Clone the Repository
+Clone the repository and install the required system libraries:
 
 ```bash
 git clone https://github.com/Oya-Tomo/3dgs-reconst-demo.git
 cd 3dgs-reconst-demo
-```
-
-### 1.2 Verify CUDA 13.2 on the Training Machine
-
-```bash
-nvidia-smi
-nvcc --version
-```
-
-`nvcc --version` must report `release 13.2`. If CUDA Toolkit was installed in a non-default location, add its `bin`
-directory to `PATH`.
-
-```bash
-export PATH=/usr/local/cuda-13.2/bin:$PATH
-```
-
-Before training, `src/train.py` validates CUDA GPU availability, the PyTorch CUDA runtime, and `nvcc`. Training stops
-if either the PyTorch runtime or toolkit does not match CUDA 13.2.
-
-### 1.3 Install System Packages and uv
-
-Install the training-machine system dependencies:
-
-```bash
 sudo apt update
 sudo apt install --yes build-essential ffmpeg git libgl1 libglib2.0-0
 ```
 
-If uv is not installed, follow the [official uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-exec "$SHELL" -l
-```
-
-### 1.4 Synchronize the Python Environment
+Synchronize the Python environment from the lockfile:
 
 ```bash
 uv sync --all-groups
 ```
 
-uv creates Python 3.12 and `.venv` according to `.python-version`, then installs the versions of Nerfstudio,
-Spectacular AI, CUDA 13.2 PyTorch, gsplat, and other packages recorded in `uv.lock`.
+The lockfile resolves recent compatible versions of Nerfstudio, CUDA 13.2 PyTorch, torchvision, gsplat, Spectacular AI,
+and the development tools.
 
-On the training machine, verify that the first command reports `'cuda': '13.2'` and `'available': True`.
+## 2. Configure the Project in Code
 
-```bash
-uv run python -c "import torch; print({'torch': torch.__version__, 'cuda': torch.version.cuda, 'available': torch.cuda.is_available()})"
-uv run sai-cli --help
-```
-
-## 2. Configure Parameters in Code
-
-Edit [src/settings.py](src/settings.py). The scripts intentionally do not override these values with CLI arguments.
+Edit [src/settings.py](src/settings.py). The project scripts intentionally have no parameter CLI; paths and model
+settings stay reviewable and versioned in code.
 
 | Setting | Purpose | Default |
 | --- | --- | --- |
-| `MAPPING.recording_path` | Spectacular AI recording | `data/recording` |
-| `MAPPING.dataset_path` | Converted Nerfstudio dataset | `data/nerfstudio` |
-| `MAPPING.key_frame_distance` | Keyframe spacing | `0.05` m |
+| `SPECTACULAR_AI.recording_path` | Input for the included adapter | `data/recording` |
+| `SPECTACULAR_AI.key_frame_distance` | Adapter keyframe spacing | `0.05` m |
+| `DATASET.dataset_path` | Nerfstudio-format training data | `data/nerfstudio` |
 | `DATASET.downscale_factor` | Training-image downscale factor | Automatic |
-| `TRAINING.output_dir` | Checkpoint directory | `outputs` |
+| `TRAINING.output_dir` | Training run root | `outputs` |
 | `TRAINING.max_num_iterations` | Training iterations | `30000` |
-| `TRAINING.cache_images` | Image cache location | `gpu` |
-| `EXPORT.checkpoint_config` | Run selected for export | Latest run automatically |
+| `TRAINING.cache_images` | Training image cache location | `gpu` |
+| `TRAINING.spherical_harmonics_degree` | View-dependent color degree | `3` |
+| `EXPORT.checkpoint_config` | Run selected for packaging | Latest run |
+| `EXPORT.dataset_path` | Camera metadata packaged for that run | `DATASET.dataset_path` |
 | `EXPORT.output_dir` | Directory copied with `scp` | `viewer_output` |
-| `VIEWER.input_dir` | Directory loaded locally | `viewer_output` |
-| `VIEWER.show_cameras` | Initial camera visibility | `True` |
-| `VIEWER.show_view_directions` | Initial view-direction visibility | `False` |
+| `VIEWER.input_dir` | Copied bundle loaded locally | `viewer_output` |
+| `VIEWER.max_display_cameras` | Maximum displayed camera frustums | `256` |
 
-By default, `VIEWER.input_dir` is connected to `EXPORT.output_dir`. Change `VIEWER.input_dir` only when the bundle is
-downloaded to a different local path.
+`VIEWER.input_dir` defaults to `EXPORT.output_dir`. Change it when the downloaded bundle is placed elsewhere.
 
-For a small tabletop scene, `key_frame_distance = 0.05` is a useful starting point. The
-[Spectacular AI guide](https://spectacularai.github.io/docs/sdk/tools/nerf.html) suggests approximately `0.15` for a
-room-sized capture.
+## 3. Prepare Training Data
 
-## 3. Convert the Spectacular AI Recording
+The trainer consumes a standard Nerfstudio dataset containing `transforms.json`, referenced images, camera transforms,
+intrinsics, and optionally an initial point cloud.
 
-Place the complete Spectacular AI recording under `data/recording/`, then run:
+### Included Spectacular AI Adapter
+
+Place a complete Spectacular AI Mapping Tools recording under `data/recording/`, then run:
 
 ```bash
 uv run src/prepare_data.py
 ```
 
-The script constructs an operation in the following form from the code settings:
+The script builds the `sai-cli process` operation from `SpectacularAISettings`, writes the result to
+`DATASET.dataset_path`, and validates the generated dataset. It refuses to overwrite a non-empty destination.
 
-```text
-sai-cli process data/recording --key_frame_distance=0.05 data/nerfstudio
-```
+### Other Data Sources
 
-After conversion, it validates `transforms.json`, referenced images, 4x4 camera matrices, and the optional initial point
-cloud. To protect existing data, it stops instead of overwriting a non-empty destination.
-
-If a Nerfstudio-format dataset already exists, skip conversion and set `DATASET.dataset_path` to that directory.
+For any other supported tool, convert its output to Nerfstudio format, set `DATASET.dataset_path`, and continue with
+training. `src/train.py` and later stages do not depend on Spectacular AI.
 
 ## 4. Train Splatfacto
+
+Run this on the training machine:
 
 ```bash
 uv run src/train.py
 ```
 
-`src/train.py` constructs `TrainerConfig`, the data parser, Splatfacto model, optimizers, and schedulers in code, then
-passes the configuration to Nerfstudio's Python API. The training-time Viewer is disabled by default.
+`src/train.py` constructs the data parser, full-image data manager, Splatfacto model, optimizers, schedulers, Viewer
+configuration, and `TrainerConfig` in Python. It then calls Nerfstudio's training entry point directly. This provides the
+same training pipeline as `ns-train splatfacto`; only CLI-based configuration is replaced by code-based configuration.
 
-Each run is stored under:
+By default, degree-3 spherical harmonics are enabled and activated progressively every 1,000 steps. The training-time
+Viewer is disabled by default.
+
+Each run is written under:
 
 ```text
-outputs/spectacular-ai-3dgs/splatfacto/<timestamp>/
+outputs/3dgs-reconstruction/splatfacto/<timestamp>/
 ├── config.yml
 └── nerfstudio_models/
+    └── step-XXXXXXXXX.ckpt
 ```
 
-`config.yml` records the complete Nerfstudio configuration for that run.
+## 5. Build the Portable Viewer Bundle
 
-## 5. Export the Viewer Bundle
-
-Run this on the training machine:
+Run this on the training machine after training:
 
 ```bash
 uv run src/export.py
 ```
 
-When `EXPORT.checkpoint_config` is `None`, the newest run is selected. Set it to a specific `config.yml` to export a
-particular run. `EXPORT.output_dir` must not exist or must be empty; the exporter refuses to overwrite an existing bundle.
+When `EXPORT.checkpoint_config` is `None`, the newest run is selected. Set it to a particular run's `config.yml` to
+package that run instead. The exporter refuses to overwrite a non-empty output directory.
 
-The default output is:
+The default bundle is:
 
 ```text
 viewer_output/
-├── manifest.json          # Bundle version, PLY filename, and camera poses
-└── splat.ply              # Trained Gaussian parameters
+├── manifest.json
+├── config.yml
+├── nerfstudio_models/
+│   └── step-XXXXXXXXX.ckpt
+└── dataset/
+    ├── transforms.json
+    └── images/
+        └── *                  # Copied source images
 ```
 
-`manifest.json` does not contain image paths. Each camera entry stores its train/eval split and a 3x4 camera-to-world
-transform. The Viewer reconstructs camera position and orientation from that matrix and derives the view direction from
-the camera's forward axis. Set `EXPORT.include_camera_poses = False` to write an empty camera list.
+The checkpoint retains all Gaussian parameters, including higher-order spherical-harmonic coefficients. The portable
+`transforms.json` retains camera transforms and intrinsics, and every referenced source image is copied into the bundle.
+Masks, depth maps, and the seed point cloud are omitted because the local Viewer does not need them.
 
-## 6. Copy Only the Bundle with scp
+`manifest.json` alone is not enough to reconstruct camera poses. It identifies and validates the bundle components;
+camera transforms and viewing orientations come from `dataset/transforms.json`.
 
-Run this from the repository root on the local machine. Replace the remote path with its actual absolute path.
+## 6. Copy Only the Bundle
+
+From the repository root on the local machine, replace the host and remote path with the actual values:
 
 ```bash
 scp -r USER@TRAIN_HOST:/absolute/path/to/3dgs-reconst-demo/viewer_output ./
 ```
 
-After copying, only `viewer_output/` is required locally. The `data/` and `outputs/` directories and source images are not
-needed. If the bundle is copied elsewhere, update `VIEWER.input_dir`.
+The local repository and `viewer_output/` are sufficient. The original `data/` and `outputs/` directories do not need
+to be copied.
 
-## 7. Display the Gaussians Locally
+## 7. Render Locally with Nerfstudio Viewer
 
-Install the local native runtime dependencies and synchronize the Python environment once:
-
-```bash
-sudo apt update
-sudo apt install --yes libgl1 libglib2.0-0
-```
+Synchronize the local environment, then launch the Viewer:
 
 ```bash
 uv sync --all-groups
 uv run src/viewer.py
 ```
 
-Open the following URL in a browser:
+`src/viewer.py` validates the copied directory, generates a relocatable runtime config inside it, and calls the same
+official `RunViewer` implementation that powers `ns-viewer`. The URL is printed by Nerfstudio, normally using port 7007.
 
-```text
-http://127.0.0.1:7007
-```
-
-The Viewer provides checkboxes for:
-
-- `Capture cameras`: display train and evaluation camera frustums.
-- `View directions`: display each camera's forward direction.
-
-Camera FOV, aspect ratio, frustum scale, and display count are managed by `ViewerSettings`. The manifest stores camera
-poses, not intrinsics, so FOV and aspect ratio are visualization values. Press `Ctrl+C` to stop the Viewer.
-
-The PLY retains spherical-harmonic coefficients. The current local Viewer passes each Gaussian's DC color to Viser's
-client-side renderer, so it does not apply higher-order view-dependent color.
+The official Viewer restores the full Splatfacto checkpoint, so degree-3 spherical harmonics produce view-dependent
+color. Training camera frustums are available in the Viewer's scene tree. Each frustum's orientation represents that
+camera's viewing direction, and clicking one moves the Viewer camera to the captured pose. Camera thumbnails use the
+copied source images.
 
 ## Reducing VRAM Usage
 
-If training exceeds the available VRAM, first move the image cache to CPU in
-[src/settings.py](src/settings.py). If that is insufficient, downscale the images.
+If training exceeds available VRAM, first cache images in CPU memory. If necessary, also downscale the dataset images in
+[src/settings.py](src/settings.py):
 
 ```python
 class DatasetSettings:
@@ -260,22 +228,24 @@ class TrainingSettings:
     cache_images: Literal["cpu", "gpu", "disk"] = "cpu"
 ```
 
-A larger `downscale_factor` lowers VRAM usage and training time at the cost of fine detail.
+A larger downscale factor reduces VRAM use and training time at the cost of fine detail.
 
 ## Updating Dependencies
 
-`pyproject.toml` defines compatibility ranges. Nerfstudio tracks the official repository's `main` branch, while PyTorch
-and torchvision use the official CUDA 13.2 index. `uv.lock` records the tested package versions and Git commit.
+The dependency ranges in `pyproject.toml` allow compatible updates, while `uv.lock` records the tested resolution.
+Nerfstudio follows its official `main` branch and PyTorch uses the official CUDA 13.2 package index.
+Pillow remains on the newest compatible 11.x release because the current Nerfstudio image loader is incompatible with
+Pillow 12.x.
 
-Update all packages within the allowed compatibility ranges with:
+Update and re-resolve the environment with:
 
 ```bash
 uv lock --upgrade
 uv sync --all-groups
 ```
 
-Nerfstudio, PyTorch, torchvision, and gsplat are tightly coupled. After an update, validate training and export with a real
-dataset before committing the new `uv.lock`.
+Nerfstudio, PyTorch, torchvision, and gsplat evolve together. After an upgrade, validate training and local checkpoint
+viewing with representative data.
 
 ## Development Checks
 
@@ -289,21 +259,19 @@ uv run pytest
 
 ## Troubleshooting
 
-- `PyTorch cannot access a CUDA GPU`: check `nvidia-smi` and
-  `uv run python -c "import torch; print(torch.cuda.is_available())"`.
-- `PyTorch uses CUDA runtime ...`: verify the CUDA 13.2 index in `pyproject.toml` and the resolved packages in `uv.lock`,
-  then run `uv sync` again.
-- `nvcc is not on PATH`: add the CUDA Toolkit 13.2 `bin` directory to `PATH`.
-- `The conversion destination is not empty`: move the existing data or change `MAPPING.dataset_path`.
-- `The viewer output directory is not empty`: move the existing bundle or change `EXPORT.output_dir`.
-- `The viewer input directory does not exist`: make the `scp` destination match `VIEWER.input_dir`.
-- Missing point-cloud warning: training can continue, but 3DGS generally initializes more reliably with a point cloud.
-- Viewer connection failure: check for a port conflict on 7007 and confirm that the browser supports WebGL.
+- `The conversion destination is not empty`: move the existing data or change `DATASET.dataset_path`.
+- `No trained config.yml exists`: finish a training run or set `EXPORT.checkpoint_config` explicitly.
+- `The Viewer output directory is not empty`: move the previous bundle or change `EXPORT.output_dir`.
+- `The Viewer input directory does not exist`: make the `scp` destination match `VIEWER.input_dir`.
+- Missing point-cloud warning: training can continue with random initialization, but a suitable point cloud usually gives
+  a better starting state.
+- Viewer launch or rendering failure: confirm that the local NVIDIA driver supports the locked CUDA runtime and that
+  port 7007 is available.
 
 ## Capture Guidance and Licensing
 
-Capture every part of the scene from multiple overlapping viewpoints. Avoid sudden motion, motion blur, and large exposure
-changes. Recordings, converted datasets, checkpoints, and Viewer bundles are excluded from Git because they can be large.
+Capture every part of the scene from multiple overlapping viewpoints. Avoid sudden motion, motion blur, and large
+exposure changes.
 
-Spectacular AI SDK and Mapping Tools have usage-specific license terms. Review the
-[official licensing information](https://www.spectacularai.com/mapping) before commercial use.
+The included Spectacular AI adapter depends on Spectacular AI SDK and Mapping Tools. Review its usage-specific license
+terms before commercial use.
