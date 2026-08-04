@@ -16,9 +16,9 @@ class SpectacularAISettings:
     """Settings for the included Spectacular AI input adapter."""
 
     recording_path: Path = PROJECT_ROOT / "data" / "recording"
-    key_frame_distance: float = 0.05
+    key_frame_distance: float = 0.15
     preview_3d: bool = False
-    fast: bool = False
+    fast: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,14 +50,14 @@ class TrainingSettings:
     num_devices: int = 1
     expected_cuda_version: str = "13.2"
 
-    max_num_iterations: int = 30_000
-    steps_per_save: int = 2_000
-    steps_per_eval_image: int = 100
-    steps_per_eval_all_images: int = 1_000
-    steps_per_log: int = 10
+    max_num_iterations: int = 60_000
+    steps_per_save: int = 4_000
+    steps_per_eval_image: int = 200
+    steps_per_eval_all_images: int = 2_000
+    steps_per_log: int = 20
     save_only_latest_checkpoint: bool = True
 
-    cache_images: Literal["cpu", "gpu", "disk"] = "gpu"
+    cache_images: Literal["cpu", "gpu", "disk"] = "cpu"
     cache_images_type: Literal["uint8", "float32"] = "uint8"
     camera_res_scale_factor: float = 1.0
     train_cameras_sampling_strategy: Literal["random", "fps"] = "random"
@@ -80,7 +80,7 @@ class TrainingSettings:
     cull_screen_size: float = 0.15
     split_screen_size: float = 0.05
     stop_screen_size_at: int = 4_000
-    stop_split_at: int = 15_000
+    stop_split_at: int = 40_000
     random_init: bool = False
     num_random_points: int = 50_000
     random_init_scale: float = 10.0
